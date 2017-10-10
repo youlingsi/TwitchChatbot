@@ -9,7 +9,7 @@ from Socketv2 import openSocket, sendMessage
 from Settingsv2 import HOST, PORT, PASS, IDENT
 from datetime import datetime
 from BotActivities import numGen, numCheck, emChat
-
+from botAWS import createTable, updateAttempt, updateWinner, maxAttempt
 
 # Actually joins the rooms
 s = openSocket()
@@ -26,20 +26,23 @@ starttime = time.time() + 7200
 # Define the number to guess:
 numGuess = ""
 
+# Define the session name:
+session = ""
+
 # Runs until time is up
 while time.time() < starttime:
-    
+
         # Pulls a chunk off the buffer, puts it in "temp"
         readbuffer = readbuffer + s.recv(1024).decode('utf-8')
         temp = readbuffer.split("\n")
         readbuffer = temp.pop()
-    
+
         # Iterates through the chunk
         for line in temp:
             print(line)
             id = id + 1
 
-        
+
             # Parses lines and writes them to the file
             if "PRIVMSG" in line:
                 try:
@@ -52,23 +55,23 @@ while time.time() < starttime:
                     mod = getMod(line)
                     sub = getSub(line)
                     turbo = getTurbo(line)
-                    
-                    
+
+
                     if owner == 1:
                         mod = 1
-        
+
                     # Writes Message ID, channel, user, date/time, and cleaned message to file
                     with open('outputlog.csv', 'a') as fp:
                         ab = csv.writer(fp, delimiter=',')
                         data = [id, channelname, user, datetime.now(), message.strip(), owner, mod, sub, turbo];
                         ab.writerow(data)
-                                
+
                 # Survives if there's a message problem
                 except Exception as e:
                     print("MESSAGE PROBLEM")
                     print(line)
                     print(e)
-        
+
             # Responds to PINGs from twitch so it doesn't get disconnected
             elif "PING" in line:
                 try:
@@ -76,20 +79,20 @@ while time.time() < starttime:
                     s.send(("PONG %s\r\n" % separate[1]).encode('utf-8'))
                     print(("PONG %s\r\n" % separate[1]))
                     print("I PONGED BACK")
-                
+
                 # Survives if there's a ping problem
                 except:
                     print("PING problem PING problem PING problem")
                     print(line)
-        
+
             # Parses ban messages and writes them to the file
             elif "CLEARCHAT" in line:
                 try:
-            
+
                     # Gets banned user's name and channel name from a line
                     user = getBannedUser(line)
                     channelname = getBannedChannelname(line)
-                
+
                     # Writes Message ID, channel, user, date/time, and an indicator that it was a ban message.
                     #   I use "oghma.ban" because the bot's name is oghma, and I figure it's not a phrase that's
                     #   likely to show up in a message so it's easy to search for.
@@ -97,7 +100,7 @@ while time.time() < starttime:
                         ab = csv.writer(fp, delimiter=',');
                         data = [id, channelname, user, datetime.now(), "oghma.ban"];
                         ab.writerow(data);
-            
+
                 # Survives if there's a ban message problem
                 except Exception as e:
                     print("BAN PROBLEM")
@@ -113,6 +116,9 @@ while time.time() < starttime:
                     message = getMessage(line).split("numGuessStart")[1].strip()
                     numGuess = numGen(message)
                     sendMessage(s, "Guess a number with " + str(len(numGuess)) + " Digits" , 0)
+                    createTable(getChannelname(line))
+                    session = time.strftime("%Y%m%d-%H%M%S")
+
                 else:
                     sendMessage(s, "The game is already started", 0)
                     sendMessage(s, "Guess a number with " + str(len(numGuess)) + " Digits" , 0)
@@ -127,16 +133,21 @@ while time.time() < starttime:
                         sendMessage(s, "Error! Please input a number with " + str(len(numGuess)) + " Digits" , 0)
                     elif result == "win":
                         usr = getUser(line)
-                        sendMessage(s, numGuess + "! Correct! " + usr + " wins!", 0)
+                        updateAttempt(getChannelname(line), session, usr)
+                        attuser = maxAttempt(getChannelname(line), session)
+                        sendMessage(s, numGuess + "! Correct! " + usr + " wins! " + attuser, 0)
+                        updateWinner(getChannelname(line), session, usr)
                         numGuess = ""
                     else:
                         sendMessage(s, result, 0)
                         sendMessage(s, "Y -- Matching Digit; N -- Wrong Digit; O -- Correct digit by wrong position", 0)
-                        
+                        updateAttempt(getChannelname(line), session, getUser(line))
+
             # reveal the secret number and ends the game.
             if "#numGuessPrint" in line:
                     sendMessage(s, "number: " + numGuess, 0)
                     numGuess = ""
+
 
             #2. Chat with the bot using emojis
             if "#emChat" in line:
@@ -154,14 +165,3 @@ while time.time() < starttime:
 
             if "#emSmile" in line:
                 sendMessage(s, ";)", 0)
-
-
-
-
-
-
-
-
-
-
-
